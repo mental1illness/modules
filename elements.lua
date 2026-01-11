@@ -20,7 +20,8 @@ local Utility = {} do
 		return Tween
 	end
 	function Utility:Dragify(Frame)
-	    local IsDragging, Current_Input, Pos, FramePos = false
+	    local IsDragging, Current_Input, Pos, FramePos = false, nil, nil, nil
+	
 	    Frame.InputBegan:Connect(function(input)
 	        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 	            IsDragging = true
@@ -43,16 +44,17 @@ local Utility = {} do
 	
 	    RunService.RenderStepped:Connect(function()
 	        if IsDragging and Current_Input then
-				local Delta = Current_Input.Position - Pos
-				Frame.Position = UDim2.new(
-					FramePos.X.Scale,
-					FramePos.X.Offset + Delta.X,
-					FramePos.Y.Scale,
-					FramePos.Y.Offset + Delta.Y
-				)
+	            local Delta = Current_Input.Position - Pos
+	            Frame.Position = UDim2.new(
+	                FramePos.X.Scale,
+	                FramePos.X.Offset + Delta.X,
+	                FramePos.Y.Scale,
+	                FramePos.Y.Offset + Delta.Y
+	            )
 	        end
 	    end)
 	end
+
 	function Utility:AddShadow(_Instance, _Properties)
 		if not _Instance then
 			return
