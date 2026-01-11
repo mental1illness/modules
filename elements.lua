@@ -1,3 +1,5 @@
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
 local Utility = {} do
 	function Utility:Create(_ClassName, _Properties, _Parent)
 		local _Object = Instance.new(_ClassName);
@@ -16,6 +18,43 @@ local Utility = {} do
 		local Tween = TweenService:Create(_Object, _TweenInfo, _Properties);
 		Tween:Play()
 		return Tween
+	end
+	function Utility:Dragify(Frame)
+	    local IsDragging = false
+	    local Current_Input
+	    local Pos
+	    local FramePos
+	    Frame.InputBegan:Connect(function(input)
+	        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+	            IsDragging = true
+	            Pos = input.Position
+	            FramePos = Frame.Position
+	
+	            input.Changed:Connect(function()
+	                if input.UserInputState == Enum.UserInputState.End then
+	                    IsDragging = false
+	                end
+	            end)
+	        end
+	    end)
+	
+	    Frame.InputChanged:Connect(function(input)
+	        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+	            Current_Input = input
+	        end
+	    end)
+	
+	    RunService.RenderStepped:Connect(function()
+	        if IsDragging and Current_Input then
+				local delta = input.Position - Pos
+				Frame.Position = UDim2.new(
+					FramePos.X.Scale,
+					FramePos.X.Offset + delta.X,
+					FramePos.Y.Scale,
+					FramePos.Y.Offset + delta.Y
+				)
+	        end
+	    end)
 	end
 	function Utility:AddShadow(_Instance, _Properties)
 		if not _Instance then
