@@ -1,4 +1,22 @@
-local Utility = {} do
+local Utility = {} do;
+	function Utility:Create(_ClassName, _Properties, _Parent)
+		local _Object = Instance.new(_ClassName);
+		if _Properties and _Object then
+			for Key, Value in pairs(_Properties) do
+				_Object[Key] = Value;
+			end
+		end
+		if _Parent then
+			_Object.Parent = _Parent;
+		end
+		return _Object
+	end
+	function Utility:Tween(_Object, _TweenInfo, _Properties)
+		local TweenService = game:GetService("TweenService");
+		local Tween = TweenService:Create(_Object, _TweenInfo, _Properties);
+		Tween:Play()
+		return Tween
+	end
 	function Utility:AddShadow(_Instance, _Properties)
 		if not _Instance then
 			return
