@@ -1,4 +1,4 @@
-local Utility = {} do;
+local Utility = {} do
 	function Utility:Create(_ClassName, _Properties, _Parent)
 		local _Object = Instance.new(_ClassName);
 		if _Properties and _Object then
