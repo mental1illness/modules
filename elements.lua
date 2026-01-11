@@ -20,10 +20,7 @@ local Utility = {} do
 		return Tween
 	end
 	function Utility:Dragify(Frame)
-	    local IsDragging = false
-	    local Current_Input
-	    local Pos
-	    local FramePos
+	    local IsDragging, Current_Input, Pos, FramePos = false
 	    Frame.InputBegan:Connect(function(input)
 	        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 	            IsDragging = true
@@ -46,12 +43,12 @@ local Utility = {} do
 	
 	    RunService.RenderStepped:Connect(function()
 	        if IsDragging and Current_Input then
-				local delta = input.Position - Pos
+				local Delta = Current_Input.Position - Pos
 				Frame.Position = UDim2.new(
 					FramePos.X.Scale,
-					FramePos.X.Offset + delta.X,
+					FramePos.X.Offset + Delta.X,
 					FramePos.Y.Scale,
-					FramePos.Y.Offset + delta.Y
+					FramePos.Y.Offset + Delta.Y
 				)
 	        end
 	    end)
