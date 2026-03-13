@@ -64,7 +64,9 @@ local SetFont = function(Number: number): Font?
 end
 
 type RobloxObjType = {
-    setProperty: (Object: Instance, Property: string, Value: any) -> Instance,
+    SetRenderProperty: (Object: Instance, Property: string, Value: any) -> Instance,
+    GetRenderProperty: (Object: Instance, Property: string) -> any,
+    DestroyRenderObject: (Object: Instance) -> boolean,
     new: (ClassName: string, Properties: PropertyTable) -> Instance,
     Fonts: {[string]: number}
 }
@@ -89,6 +91,7 @@ local SetDefault = function(Object: Instance, ObjectType: string)
     elseif IsA(Object, "TextLabel") then
         Object.BackgroundTransparency = 1
         Object.TextSize = 12
+        Object.FontFace = Fonts["Tahoma"]
         Object.TextColor3 = FromRGB(255,255,255)
         Object.ClipsDescendants = false
     elseif IsA(Object, "ScreenGui") then
@@ -129,7 +132,10 @@ local RobloxObj: RobloxObjType = {
     DestroyRenderObject = function(Object: Instance)
         if Object and Object.Remove then
             Remove(Object)
+        else
+            return false
         end
+        return true
     end,
     new = function(ClassName: string, Properties: PropertyTable): Instance
         local CustomClass = nil
