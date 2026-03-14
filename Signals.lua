@@ -17,7 +17,7 @@ local signal = {}
 
         self.connections[key] = func
 
-        function connection:disconnect()
+        function connection:Disconnect()
             if self._signal then
                 self._signal.connections[key] = nil
                 self._signal = nil
