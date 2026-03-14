@@ -16,59 +16,59 @@ local Signal = {}
 Signal.__index = Signal
 
 function Signal.New(): Signal
-	local Self = setmetatable({}, Signal) :: any
-	Self.Connections = {}
-	Self.IsDestroyed = false
-	return Self
+	local self = setmetatable({}, Signal) :: any
+	self.Connections = {}
+	self.IsDestroyed = false
+	return self
 end
 
 function Signal:Connect(Func: (...any) -> ()): Connection?
-	if Self.IsDestroyed then
+	if self.IsDestroyed then
 		return nil
 	end
 
 	if type(Func) ~= "function" then
-		warn("🖕", 2) 
+		warn("Function expected", 2)
 		return nil
 	end
 
 	local Connection: Connection = {} :: any
 	local Key = Connection
 
-	Self.Connections[Key] = Func
+	self.Connections[Key] = Func
 
 	function Connection:Disconnect()
-		local Sig = Self.Signal
+		local Sig = Connection.Signal
 		if Sig then
 			Sig.Connections[Key] = nil
-			Self.Signal = nil
+			Connection.Signal = nil
 		end
 	end
 
-	Connection.Signal = Self
+	Connection.Signal = self
 
 	return Connection
 end
 
 function Signal:Fire(...: any)
-	if Self.IsDestroyed then
+	if self.IsDestroyed then
 		return
 	end
 
-	for _, Func in pairs(Self.Connections) do
+	for _, Func in pairs(self.Connections) do
 		task.spawn(Func, ...)
 	end
 end
 
 function Signal:Destroy()
-	Self.IsDestroyed = true
+	self.IsDestroyed = true
 
-	for Key in pairs(Self.Connections) do
-		Self.Connections[Key] = nil
+	for Key in pairs(self.Connections) do
+		self.Connections[Key] = nil
 	end
 
-	Self.Connections = nil :: any
-	setmetatable(Self, nil)
+	self.Connections = nil :: any
+	setmetatable(self, nil)
 end
 
 return Signal
