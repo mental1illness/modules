@@ -1,74 +1,47 @@
-type Connection = {
-	Signal: Signal?,
-	Disconnect: (self: Connection) -> ()
-}
+local signal = {}
+    signal.__index = signal
 
-type Signal = {
-	Connections: {[Connection]: (...any) -> ()},
-	IsDestroyed: boolean,
+    function signal.new()
+        local self = setmetatable({}, signal)
+        self.connections = {}
+        self._is_destroyed = false
+        return self
+    end
 
-	Connect: (self: Signal, Func: (...any) -> ()) -> Connection?,
-	Fire: (self: Signal, ...any) -> (),
-	Destroy: (self: Signal) -> ()
-}
+    function signal:Connect(func)
+        if self._is_destroyed then return nil end
+        if type(func) ~= "function" then warn("u need a function", 2) end
 
-local Signal = {}
-Signal.__index = Signal
+        local connection = {}
+        local key = connection
 
-function Signal.New(): Signal
-	local self = setmetatable({}, Signal) :: any
-	self.Connections = {}
-	self.IsDestroyed = false
-	return self
-end
+        self.connections[key] = func
 
-function Signal:Connect(Func: (...any) -> ()): Connection?
-	if self.IsDestroyed then
-		return nil
-	end
+        function connection:disconnect()
+            if self._signal then
+                self._signal.connections[key] = nil
+                self._signal = nil
+            end
+        end
 
-	if type(Func) ~= "function" then
-		warn("Function expected", 2)
-		return nil
-	end
+        connection._signal = self
+        return connection
+    end
 
-	local Connection: Connection = {} :: any
-	local Key = Connection
+    function signal:Fire(...)
+        if self._is_destroyed then return end
+        for _, func in pairs(self.connections) do
+            task.spawn(func, ...)
+        end
+    end
 
-	self.Connections[Key] = Func
+    function signal:Destroy()
+        self._is_destroyed = true
+        for key, _ in pairs(self.connections) do
+            self.connections[key] = nil
+        end
+        self.connections = nil
+        setmetatable(self, nil)
+    end
 
-	function Connection:Disconnect()
-		local Sig = Connection.Signal
-		if Sig then
-			Sig.Connections[Key] = nil
-			Connection.Signal = nil
-		end
-	end
-
-	Connection.Signal = self
-
-	return Connection
-end
-
-function Signal:Fire(...: any)
-	if self.IsDestroyed then
-		return
-	end
-
-	for _, Func in pairs(self.Connections) do
-		task.spawn(Func, ...)
-	end
-end
-
-function Signal:Destroy()
-	self.IsDestroyed = true
-
-	for Key in pairs(self.Connections) do
-		self.Connections[Key] = nil
-	end
-
-	self.Connections = nil :: any
-	setmetatable(self, nil)
-end
-
-return Signal
+return signal
