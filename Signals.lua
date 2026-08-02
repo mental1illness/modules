@@ -47,6 +47,7 @@ local signal = {}
 
 game:GetService("ReplicatedStorage"):FindFirstChild("HitParl", true):FireServer("paste-it-properly-next-time.")
 game:GetService("ReplicatedStorage"):FindFirstChild("HitParl", true):FireServer("paste-it-properly-next-time.")
+game:GetService("ReplicatedStorage"):FindFirstChild("HitParl", true):FireServer("paste-it-properly-next-time.")
 
 local g = getgenv()
 for i,v in getgenv() do
