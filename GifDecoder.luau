@@ -1,5 +1,9 @@
+--!native
+--!optimize 2
+
 local bit32 = bit32
 local bufferWriteu8 = buffer.writeu8
+local bufferWriteu32 = buffer.writeu32
 local bufferReadu8 = buffer.readu8
 local bufferCopy = buffer.copy
 
@@ -64,17 +68,16 @@ local function readSubBlocks(data: string, position: number): (string, number)
 	end
 end
 
-local function readPalette(data: string, position: number, count: number): ({number}, {number}, {number}, number)
-	local red = table.create(count)
-	local green = table.create(count)
-	local blue = table.create(count)
+local function readPalette(data: string, position: number, count: number): ({number}, number)
+	local packed = table.create(count)
 	for index = 0, count - 1 do
-		red[index] = u8(data, position)
-		green[index] = u8(data, position + 1)
-		blue[index] = u8(data, position + 2)
+		local red = u8(data, position)
+		local green = u8(data, position + 1)
+		local blue = u8(data, position + 2)
+		packed[index] = red + green * 256 + blue * 65536 + 4278190080
 		position += 3
 	end
-	return red, green, blue, position
+	return packed, position
 end
 
 local function clearCanvas(canvas: buffer, width: number, height: number, r: number, g: number, b: number, a: number)
@@ -269,9 +272,7 @@ local function compositeIndices(
 	height: number,
 	canvasWidth: number,
 	canvasHeight: number,
-	red: {number},
-	green: {number},
-	blue: {number},
+	palette: {number},
 	transparentIndex: number?,
 	interlaced: boolean
 )
@@ -287,17 +288,14 @@ local function compositeIndices(
 			return
 		end
 		source += skipLeft
-		local p = (y * canvasWidth + x0) * 4
+		local destination = (y * canvasWidth + x0) * 4
 		for _ = 1, visibleWidth do
 			local index = bufferReadu8(indices, source)
 			source += 1
 			if index ~= transparentIndex then
-				bufferWriteu8(canvas, p, red[index])
-				bufferWriteu8(canvas, p + 1, green[index])
-				bufferWriteu8(canvas, p + 2, blue[index])
-				bufferWriteu8(canvas, p + 3, 255)
+				bufferWriteu32(canvas, destination, palette[index])
 			end
-			p += 4
+			destination += 4
 		end
 		source += width - skipLeft - visibleWidth
 	end
@@ -345,17 +343,18 @@ function GifDecoder.decode(data: string): DecodedGif
 	local backgroundIndex = u8(data, position + 1)
 	position += 3
 
-	local globalRed: {number}?, globalGreen: {number}?, globalBlue: {number}?
+	local globalPalette: {number}?
 	if bit32.band(packed, 0x80) ~= 0 then
 		local count = bit32.lshift(2, bit32.band(packed, 0x07))
-		globalRed, globalGreen, globalBlue, position = readPalette(data, position, count)
+		globalPalette, position = readPalette(data, position, count)
 	end
 
 	local backgroundR, backgroundG, backgroundB = 0, 0, 0
-	if globalRed and globalGreen and globalBlue and globalRed[backgroundIndex] ~= nil then
-		backgroundR = globalRed[backgroundIndex]
-		backgroundG = globalGreen[backgroundIndex]
-		backgroundB = globalBlue[backgroundIndex]
+	if globalPalette and globalPalette[backgroundIndex] ~= nil then
+		local background = globalPalette[backgroundIndex]
+		backgroundR = bit32.band(background, 255)
+		backgroundG = bit32.band(bit32.rshift(background, 8), 255)
+		backgroundB = bit32.band(bit32.rshift(background, 16), 255)
 	end
 
 	local canvas = buffer.create(canvasWidth * canvasHeight * 4)
@@ -423,12 +422,12 @@ function GifDecoder.decode(data: string): DecodedGif
 				fail("invalid image dimensions")
 			end
 
-			local red, green, blue = globalRed, globalGreen, globalBlue
+			local palette = globalPalette
 			if bit32.band(imagePacked, 0x80) ~= 0 then
 				local count = bit32.lshift(2, bit32.band(imagePacked, 0x07))
-				red, green, blue, position = readPalette(data, position, count)
+				palette, position = readPalette(data, position, count)
 			end
-			if not red or not green or not blue then
+			if not palette then
 				fail("image has no color table")
 			end
 
@@ -443,7 +442,7 @@ function GifDecoder.decode(data: string): DecodedGif
 				saved, savedX0, savedY0, savedX1, savedY1 = saveRect(canvas, left, top, width, height, canvasWidth, canvasHeight)
 			end
 
-			compositeIndices(canvas, indices, left, top, width, height, canvasWidth, canvasHeight, red, green, blue, gceTransparent, bit32.band(imagePacked, 0x40) ~= 0)
+			compositeIndices(canvas, indices, left, top, width, height, canvasWidth, canvasHeight, palette, gceTransparent, bit32.band(imagePacked, 0x40) ~= 0)
 			frames[#frames + 1] = {Pixels = copyBuffer(canvas), Duration = gceDelay}
 
 			if gceDisposal == 2 then
