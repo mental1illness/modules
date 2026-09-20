@@ -123,26 +123,4 @@ function GifRenderer:Destroy()
 	self.Image:Destroy()
 end
 
-local gifBytes = Game:HttpGet("https://static2.klipy.com/ii/4e7bea9f7a3371424e6c16ebc93252fe/03/95/GMlkBfifuZEo.gif")
-local gif = GifDecoder.decode(gifBytes)
-
-local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Parent = gethui()
-
-local ImageLabel = Instance.new("ImageLabel")
-ImageLabel.Parent = ScreenGui
-
-ImageLabel.Size = UDim2.fromOffset(gif.Width, gif.Height)
-ImageLabel.AnchorPoint = Vector2.new(0.5, 0.5)
-ImageLabel.Position = UDim2.fromScale(0.5, 0.5)
-
-
-local renderer = GifRenderer.new({
-	ImageLabel = ImageLabel,
-	Size = Vector2.new(gif.Width, gif.Height),
-	Frames = gif.Frames,
-	Looped = gif.LoopCount == nil or gif.LoopCount == 0,
-	AutoPlay = true,
-})
-
 return GifRenderer
