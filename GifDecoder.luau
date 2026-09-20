@@ -142,7 +142,7 @@ local function clearRect(canvas: buffer, left: number, top: number, width: numbe
 	end
 end
 
-local function lzwDecode(compressed: string, minimumCodeSize: number, expectedPixels: number): {number}
+local function lzwDecode(compressed: string, minimumCodeSize: number, expectedPixels: number): buffer
 	if minimumCodeSize < 2 or minimumCodeSize > 8 then
 		fail("invalid LZW minimum code size")
 	end
@@ -150,39 +150,42 @@ local function lzwDecode(compressed: string, minimumCodeSize: number, expectedPi
 	local clearCode = bit32.lshift(1, minimumCodeSize)
 	local endCode = clearCode + 1
 	local codeSize = minimumCodeSize + 1
-	local nextCode = endCode + 1
-	local tablePrefix = table.create(4096)
-	local tableSuffix = table.create(4096)
-	local output = table.create(expectedPixels)
-	local outputCount = 0
-	local bitPosition = 0
-	local previous: number? = nil
+	local available = clearCode + 2
+	local oldCode = -1
 	local first = 0
+	local bytePosition = 1
+	local bitBuffer = 0
+	local bitsInBuffer = 0
+	local compressedLength = #compressed
+	local prefix = table.create(4096)
+	local suffix = table.create(4096)
+	local stack = table.create(4096)
+	local output = buffer.create(expectedPixels)
+	local outputCount = 0
 	local sawEnd = false
 
 	local function readCode(): number?
-		if bitPosition + codeSize > #compressed * 8 then
-			return nil
-		end
-		local value = 0
-		for bit = 0, codeSize - 1 do
-			local byteIndex = math.floor((bitPosition + bit) / 8) + 1
-			local bitIndex = (bitPosition + bit) % 8
-			local byteValue = string.byte(compressed, byteIndex)
-			if bit32.band(byteValue, bit32.lshift(1, bitIndex)) ~= 0 then
-				value = bit32.bor(value, bit32.lshift(1, bit))
+		while bitsInBuffer < codeSize do
+			if bytePosition > compressedLength then
+				return nil
 			end
+			bitBuffer = bit32.bor(bitBuffer, bit32.lshift(string.byte(compressed, bytePosition), bitsInBuffer))
+			bytePosition += 1
+			bitsInBuffer += 8
 		end
-		bitPosition += codeSize
-		return value
+		local mask = bit32.lshift(1, codeSize) - 1
+		local code = bit32.band(bitBuffer, mask)
+		bitBuffer = bit32.rshift(bitBuffer, codeSize)
+		bitsInBuffer -= codeSize
+		return code
 	end
 
 	local function emit(value: number)
-		outputCount += 1
-		if outputCount > expectedPixels then
+		if outputCount >= expectedPixels then
 			fail("LZW output exceeds frame size")
 		end
-		output[outputCount] = value
+		bufferWriteu8(output, outputCount, value)
+		outputCount += 1
 	end
 
 	while true do
@@ -191,63 +194,58 @@ local function lzwDecode(compressed: string, minimumCodeSize: number, expectedPi
 			break
 		elseif code == clearCode then
 			codeSize = minimumCodeSize + 1
-			nextCode = endCode + 1
-			previous = nil
+			available = clearCode + 2
+			oldCode = -1
 		elseif code == endCode then
 			sawEnd = true
 			break
 		else
-			if previous == nil then
+			if code >= available then
+				if code ~= available or oldCode < 0 then
+					fail("invalid LZW code")
+				end
+			end
+			local inCode = code
+			local stackCount = 0
+			if oldCode < 0 then
 				if code >= clearCode then
 					fail("invalid first LZW code")
 				end
 				first = code
 				emit(code)
-				previous = code
+				oldCode = code
 			else
-				local kwkwk = code == nextCode
-				local current = if kwkwk then previous else code
-				if not kwkwk and current > nextCode then
-					fail("invalid LZW code")
+				if code == available then
+					stackCount += 1
+					stack[stackCount] = first
+					code = oldCode
 				end
-				local chain = current
-				while chain >= clearCode do
-					if chain >= 4096 or tableSuffix[chain] == nil then
+				while code >= clearCode do
+					if code >= 4096 or suffix[code] == nil then
 						fail("invalid LZW dictionary reference")
 					end
-					chain = tableSuffix[chain]
-				end
-				first = chain
-
-				local stack = table.create(4096)
-				local stackCount = 0
-				chain = current
-				while chain >= clearCode do
 					stackCount += 1
 					if stackCount > 4096 then
 						fail("LZW dictionary cycle")
 					end
-					stack[stackCount] = tableSuffix[chain]
-					chain = tablePrefix[chain]
+					stack[stackCount] = suffix[code]
+					code = prefix[code]
 				end
+				first = code
 				stackCount += 1
-				stack[stackCount] = chain
+				stack[stackCount] = first
 				for index = stackCount, 1, -1 do
 					emit(stack[index])
 				end
-				if kwkwk then
-					emit(first)
-				end
-
-				if nextCode < 4096 then
-					tablePrefix[nextCode] = previous
-					tableSuffix[nextCode] = first
-					nextCode += 1
-					if nextCode == bit32.lshift(1, codeSize) and codeSize < 12 then
+				if available < 4096 then
+					prefix[available] = oldCode
+					suffix[available] = first
+					available += 1
+					if available == bit32.lshift(1, codeSize) and codeSize < 12 then
 						codeSize += 1
 					end
 				end
-				previous = code
+				oldCode = inCode
 			end
 		end
 	end
