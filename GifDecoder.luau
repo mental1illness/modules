@@ -8,10 +8,6 @@ export type DecodedFrame = {
 	Duration: number,
 }
 
-export type DecodeOptions = {
-	YieldEveryFrames: number?,
-}
-
 export type DecodedGif = {
 	Width: number,
 	Height: number,
@@ -280,23 +276,30 @@ local function compositeIndices(
 	interlaced: boolean
 )
 	local source = 0
+	local x0 = math.max(left, 0)
+	local x1 = math.min(left + width, canvasWidth)
+	local skipLeft = x0 - left
+	local visibleWidth = math.max(x1 - x0, 0)
+
 	local function drawRow(y: number)
 		if y < 0 or y >= canvasHeight then
 			source += width
 			return
 		end
-		for x = 0, width - 1 do
+		source += skipLeft
+		local p = (y * canvasWidth + x0) * 4
+		for _ = 1, visibleWidth do
 			local index = bufferReadu8(indices, source)
 			source += 1
-			local dx = left + x
-			if index ~= transparentIndex and dx >= 0 and dx < canvasWidth then
-				local p = (y * canvasWidth + dx) * 4
+			if index ~= transparentIndex then
 				bufferWriteu8(canvas, p, red[index])
 				bufferWriteu8(canvas, p + 1, green[index])
 				bufferWriteu8(canvas, p + 2, blue[index])
 				bufferWriteu8(canvas, p + 3, 255)
 			end
+			p += 4
 		end
+		source += width - skipLeft - visibleWidth
 	end
 
 	if not interlaced then
@@ -317,12 +320,7 @@ local function compositeIndices(
 	end
 end
 
-function GifDecoder.decode(data: string, options: DecodeOptions?): DecodedGif
-	options = options or {}
-	local yieldEveryFrames = options.YieldEveryFrames or 1
-	if yieldEveryFrames < 1 then
-		yieldEveryFrames = 1
-	end
+function GifDecoder.decode(data: string): DecodedGif
 	assert(typeof(data) == "string", "decode expects GIF bytes as a string")
 	if #data < 13 then
 		fail("file is too short")
@@ -368,7 +366,6 @@ function GifDecoder.decode(data: string, options: DecodeOptions?): DecodedGif
 	local gceDelay = 0
 	local gceTransparent: number? = nil
 	local gceDisposal = 0
-	local decodedFrameCount = 0
 
 	while position <= #data do
 		local introducer = u8(data, position)
@@ -447,17 +444,12 @@ function GifDecoder.decode(data: string, options: DecodeOptions?): DecodedGif
 			end
 
 			compositeIndices(canvas, indices, left, top, width, height, canvasWidth, canvasHeight, red, green, blue, gceTransparent, bit32.band(imagePacked, 0x40) ~= 0)
-			decodedFrameCount += 1
-			frames[decodedFrameCount] = {Pixels = copyBuffer(canvas), Duration = gceDelay}
+			frames[#frames + 1] = {Pixels = copyBuffer(canvas), Duration = gceDelay}
 
 			if gceDisposal == 2 then
 				clearRect(canvas, left, top, width, height, canvasWidth, canvasHeight, backgroundR, backgroundG, backgroundB)
 			elseif gceDisposal == 3 and saved and savedX0 and savedY0 and savedX1 and savedY1 then
 				restoreRect(canvas, saved, savedX0, savedY0, savedX1, savedY1, canvasWidth)
-			end
-
-			if decodedFrameCount % yieldEveryFrames == 0 and task and task.wait then
-				task.wait()
 			end
 
 			gceDelay = 0
