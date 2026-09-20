@@ -8,6 +8,10 @@ export type DecodedFrame = {
 	Duration: number,
 }
 
+export type DecodeOptions = {
+	YieldEveryFrames: number?,
+}
+
 export type DecodedGif = {
 	Width: number,
 	Height: number,
@@ -91,8 +95,9 @@ local function clearCanvas(canvas: buffer, width: number, height: number, r: num
 end
 
 local function copyBuffer(source: buffer): buffer
-	local result = buffer.create(buffer.len(source))
-	bufferCopy(result, 0, source, 0, buffer.len(source))
+	local length = buffer.len(source)
+	local result = buffer.create(length)
+	bufferCopy(result, 0, source, 0, length)
 	return result
 end
 
@@ -312,7 +317,12 @@ local function compositeIndices(
 	end
 end
 
-function GifDecoder.decode(data: string): DecodedGif
+function GifDecoder.decode(data: string, options: DecodeOptions?): DecodedGif
+	options = options or {}
+	local yieldEveryFrames = options.YieldEveryFrames or 1
+	if yieldEveryFrames < 1 then
+		yieldEveryFrames = 1
+	end
 	assert(typeof(data) == "string", "decode expects GIF bytes as a string")
 	if #data < 13 then
 		fail("file is too short")
@@ -358,6 +368,7 @@ function GifDecoder.decode(data: string): DecodedGif
 	local gceDelay = 0
 	local gceTransparent: number? = nil
 	local gceDisposal = 0
+	local decodedFrameCount = 0
 
 	while position <= #data do
 		local introducer = u8(data, position)
@@ -436,12 +447,17 @@ function GifDecoder.decode(data: string): DecodedGif
 			end
 
 			compositeIndices(canvas, indices, left, top, width, height, canvasWidth, canvasHeight, red, green, blue, gceTransparent, bit32.band(imagePacked, 0x40) ~= 0)
-			table.insert(frames, {Pixels = copyBuffer(canvas), Duration = gceDelay})
+			decodedFrameCount += 1
+			frames[decodedFrameCount] = {Pixels = copyBuffer(canvas), Duration = gceDelay}
 
 			if gceDisposal == 2 then
 				clearRect(canvas, left, top, width, height, canvasWidth, canvasHeight, backgroundR, backgroundG, backgroundB)
 			elseif gceDisposal == 3 and saved and savedX0 and savedY0 and savedX1 and savedY1 then
 				restoreRect(canvas, saved, savedX0, savedY0, savedX1, savedY1, canvasWidth)
+			end
+
+			if decodedFrameCount % yieldEveryFrames == 0 and task and task.wait then
+				task.wait()
 			end
 
 			gceDelay = 0
