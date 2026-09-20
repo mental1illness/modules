@@ -142,7 +142,7 @@ local function clearRect(canvas: buffer, left: number, top: number, width: numbe
 	end
 end
 
-local function lzwDecode(compressed: string, minimumCodeSize: number, expectedPixels: number): buffer
+local function lzwDecode(compressed: string, minimumCodeSize: number, expectedPixels: number): {number}
 	if minimumCodeSize < 2 or minimumCodeSize > 8 then
 		fail("invalid LZW minimum code size")
 	end
@@ -151,40 +151,38 @@ local function lzwDecode(compressed: string, minimumCodeSize: number, expectedPi
 	local endCode = clearCode + 1
 	local codeSize = minimumCodeSize + 1
 	local nextCode = endCode + 1
-	local prefix = table.create(4096)
-	local suffix = table.create(4096)
-	local stack = table.create(4096)
-	local output = buffer.create(expectedPixels)
+	local tablePrefix = table.create(4096)
+	local tableSuffix = table.create(4096)
+	local output = table.create(expectedPixels)
 	local outputCount = 0
-	local bytePosition = 1
-	local bitBuffer = 0
-	local bitsInBuffer = 0
+	local bitPosition = 0
 	local previous: number? = nil
 	local first = 0
 	local sawEnd = false
 
 	local function readCode(): number?
-		while bitsInBuffer < codeSize do
-			if bytePosition > #compressed then
-				return nil
-			end
-			bitBuffer = bit32.bor(bitBuffer, bit32.lshift(string.byte(compressed, bytePosition), bitsInBuffer))
-			bytePosition += 1
-			bitsInBuffer += 8
+		if bitPosition + codeSize > #compressed * 8 then
+			return nil
 		end
-		local mask = bit32.lshift(1, codeSize) - 1
-		local code = bit32.band(bitBuffer, mask)
-		bitBuffer = bit32.rshift(bitBuffer, codeSize)
-		bitsInBuffer -= codeSize
-		return code
+		local value = 0
+		for bit = 0, codeSize - 1 do
+			local byteIndex = math.floor((bitPosition + bit) / 8) + 1
+			local bitIndex = (bitPosition + bit) % 8
+			local byteValue = string.byte(compressed, byteIndex)
+			if bit32.band(byteValue, bit32.lshift(1, bitIndex)) ~= 0 then
+				value = bit32.bor(value, bit32.lshift(1, bit))
+			end
+		end
+		bitPosition += codeSize
+		return value
 	end
 
 	local function emit(value: number)
-		if outputCount >= expectedPixels then
+		outputCount += 1
+		if outputCount > expectedPixels then
 			fail("LZW output exceeds frame size")
 		end
-		bufferWriteu8(output, outputCount, value)
-		outputCount += 1
+		output[outputCount] = value
 	end
 
 	while true do
@@ -208,28 +206,29 @@ local function lzwDecode(compressed: string, minimumCodeSize: number, expectedPi
 				previous = code
 			else
 				local kwkwk = code == nextCode
-				if code > nextCode then
+				local current = if kwkwk then previous else code
+				if not kwkwk and current > nextCode then
 					fail("invalid LZW code")
 				end
-				local current = if kwkwk then previous else code
 				local chain = current
 				while chain >= clearCode do
-					if chain >= 4096 or suffix[chain] == nil then
+					if chain >= 4096 or tableSuffix[chain] == nil then
 						fail("invalid LZW dictionary reference")
 					end
-					chain = suffix[chain]
+					chain = tableSuffix[chain]
 				end
 				first = chain
 
+				local stack = table.create(4096)
 				local stackCount = 0
 				chain = current
 				while chain >= clearCode do
 					stackCount += 1
-					if stackCount > 4095 then
+					if stackCount > 4096 then
 						fail("LZW dictionary cycle")
 					end
-					stack[stackCount] = suffix[chain]
-					chain = prefix[chain]
+					stack[stackCount] = tableSuffix[chain]
+					chain = tablePrefix[chain]
 				end
 				stackCount += 1
 				stack[stackCount] = chain
@@ -241,8 +240,8 @@ local function lzwDecode(compressed: string, minimumCodeSize: number, expectedPi
 				end
 
 				if nextCode < 4096 then
-					prefix[nextCode] = previous
-					suffix[nextCode] = first
+					tablePrefix[nextCode] = previous
+					tableSuffix[nextCode] = first
 					nextCode += 1
 					if nextCode == bit32.lshift(1, codeSize) and codeSize < 12 then
 						codeSize += 1
